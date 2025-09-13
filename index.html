@@ -2,59 +2,70 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<title>브릭 브레이커 파스텔 (모바일, 겹침 해결)</title>
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0,
+               maximum-scale=1.0, user-scalable=no,
+               viewport-fit=cover"/>
+<title>브릭 브레이커 – 오렌지</title>
 <style>
   :root{
-    --bg:#f5f5fa; --fg:#444; --accent:#ffa7c4;
-    --brick1:#ffd6a5; --brick2:#caffbf; --brick3:#9bf6ff; --brick4:#a0c4ff; --brick5:#bdb2ff; --paddle:#ffadad;
+    /* 💛 오렌지(주황) 팔레트 */
+    --bg:#fff8f1;         /* 페이지 배경 */
+    --fg:#40342b;         /* 글자색 */
+    --accent:#ff9e3d;     /* 공/포인트 색 */
+    --brick1:#ffe5cc;
+    --brick2:#ffd1a3;
+    --brick3:#ffb870;
+    --brick4:#ff9e3d;
+    --brick5:#ff7a00;
+    --paddle:#ff7a00;     /* 패들 */
+    --panel:#ffffff;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0;background:var(--bg);color:var(--fg);
     font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans KR',sans-serif;
-    display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;
-    padding-bottom:calc(16px + env(safe-area-inset-bottom,0)); /* 모바일 하단 안전영역 */
+    display:flex;flex-direction:column;align-items:center;gap:12px;
+    padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom,0));
   }
-  header{width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  header{width:100%;max-width:960px;display:flex;justify-content:space-between;align-items:center;gap:8px}
   .hud{display:flex;gap:8px;font-weight:700;flex-wrap:wrap}
-  .chip{background:#fff;padding:6px 12px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-  .panel{width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-  .btn{padding:8px 14px;border-radius:20px;border:none;cursor:pointer;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);font-weight:800}
+  .chip{background:var(--panel);padding:6px 12px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .panel{width:100%;max-width:960px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn{padding:8px 14px;border-radius:20px;border:none;cursor:pointer;background:var(--panel);
+       box-shadow:0 1px 3px rgba(0,0,0,.08);font-weight:800}
   .note{font-size:13px;opacity:.85}
 
+  /* 🎮 게임 영역: JS가 width/height를 계산해 넣습니다 */
   .wrap{
-    width:100%;max-width:900px;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#fff;
-    box-shadow:0 6px 12px rgba(0,0,0,.1);position:relative;touch-action:none;
+    position:relative;
+    width:100%; max-width:960px;
+    background:var(--panel); border-radius:14px; overflow:hidden;
+    box-shadow:0 6px 12px rgba(0,0,0,.1);
+    touch-action:none;  /* 모바일 드래그 시 스크롤 방지 */
   }
-  canvas{width:100%;height:100%;display:block;background:transparent}
+  canvas{display:block; width:100%; height:100%; background:transparent}
   .center-msg{
-    position:absolute;inset:0;display:grid;place-items:center;
-    font-weight:800;color:var(--fg);text-align:center;font-size:18px;
-    background:rgba(255,255,255,.6);padding:12px
+    position:absolute; inset:0; display:grid; place-items:center;
+    font-weight:800; color:var(--fg); text-align:center; font-size:18px;
+    background:rgba(255,255,255,.6); padding:12px
   }
   .hidden{display:none}
 
-  /* ✅ 터치 버튼을 캔버스 바깥(아래)로 이동해서 겹치지 않게 */
-  .touch-controls{
-    width:100%;max-width:900px;display:flex;gap:10px;margin-top:10px;
-  }
+  /* 👆 캔버스와 분리된 터치 이동 버튼(겹침 방지) */
+  .touch-controls{width:100%;max-width:960px;display:flex;gap:10px;margin-top:10px}
   .touch-btn{
     flex:1;min-height:56px;border:none;border-radius:12px;
-    background:#eee;font-size:18px;font-weight:900;color:#333;
+    background:#f0f0f0;font-size:18px;font-weight:900;color:#333;
     box-shadow:0 1px 3px rgba(0,0,0,.06)
   }
-
-  @media (min-width:801px){
-    /* 데스크톱에서는 터치버튼 감춤 */
-    .touch-controls{display:none}
-  }
+  @media (min-width:801px){ .touch-controls{display:none} } /* 데스크톱은 숨김 */
 </style>
 </head>
 <body>
   <header>
-    <h2>🧱 브릭 브레이커 파스텔</h2>
+    <h2>🧱 브릭 브레이커 – 오렌지</h2>
     <div class="hud">
       <div class="chip">점수 <span id="score">0</span></div>
       <div class="chip">스테이지 <span id="stage">1</span></div>
@@ -63,20 +74,20 @@
   </header>
 
   <section class="panel">
-    <span class="note">← → / A D, Space·탭으로 시작·일시정지 · 화면 드래그 또는 아래 버튼으로 이동</span>
+    <span class="note">← → / A D, Space·탭으로 시작/일시정지 · 화면 드래그 또는 아래 버튼으로 이동</span>
     <div>
       <button id="startBtn" class="btn">▶ 시작/일시정지</button>
       <button id="resetBtn" class="btn">⟳ 리셋</button>
     </div>
   </section>
 
-  <!-- 🎮 게임 캔버스 (버튼과 분리) -->
+  <!-- 🔳 게임 캔버스 -->
   <div class="wrap" id="wrap">
-    <canvas id="game" width="900" height="506"></canvas>
+    <canvas id="game"></canvas>
     <div id="msg" class="center-msg">탭(또는 Space)으로 시작!</div>
   </div>
 
-  <!-- 👍 캔버스 아래로 분리된 터치 이동 버튼 -->
+  <!-- ⬅️➡️ 캔버스 아래에 있는 큰 터치 버튼 -->
   <div class="touch-controls">
     <button class="touch-btn" id="leftBtn">◀ 왼쪽</button>
     <button class="touch-btn" id="rightBtn">오른쪽 ▶</button>
@@ -84,8 +95,8 @@
 
 <script>
 (() => {
-  const c = document.getElementById('game');
-  const ctx = c.getContext('2d');
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
   const wrap = document.getElementById('wrap');
   const msgEl = document.getElementById('msg');
   const scoreEl = document.getElementById('score');
@@ -94,17 +105,46 @@
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
 
-  // 선명도 유지: DPR 스케일 적용
+  /* 📐 iOS/Android 모두에서 16:9 자동 비율 유지
+     - window.innerWidth/innerHeight 사용
+     - DPR(devicePixelRatio) 반영해 선명도 보장
+     - wrap 요소에도 동일 크기를 적용 */
   function fitCanvas(){
-    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-    const rect = c.getBoundingClientRect();
-    c.width = Math.round(rect.width * dpr);
-    c.height = Math.round(rect.height * dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-  }
-  new ResizeObserver(fitCanvas).observe(wrap);
-  window.addEventListener('orientationchange', ()=>setTimeout(fitCanvas, 100));
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
 
+    // 최대 16:9 사각형을 화면에 맞추기
+    let targetW = vw;
+    let targetH = Math.round(vw * 9/16);
+    if(targetH > vh * 0.62){ // 상단 HUD/패널을 고려해 62% 정도만 캔버스에 할당
+      targetH = Math.round(vh * 0.62);
+      targetW = Math.round(targetH * 16/9);
+      if(targetW > vw) { targetW = vw; targetH = Math.round(vw * 9/16); }
+    }
+
+    wrap.style.width  = targetW + 'px';
+    wrap.style.height = targetH + 'px';
+
+    canvas.style.width  = targetW + 'px';
+    canvas.style.height = targetH + 'px';
+    canvas.width  = Math.round(targetW * dpr);
+    canvas.height = Math.round(targetH * dpr);
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    // 패들과 공의 위치도 새 크기에 맞춰 갱신
+    paddle.y = canvas.height/dpr - 30;
+    if(!running){ // 정지 상태에서 중앙 정렬
+      paddle.x = canvas.width/dpr/2 - paddle.w/2;
+      ball.x = canvas.width/dpr/2;
+      ball.y = canvas.height/dpr - 60;
+    }
+  }
+  window.addEventListener('resize', fitCanvas, {passive:true});
+  window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 200));
+
+  // 게임 상태
   let running=false, over=false;
   let score=0, stage=1, lives=3;
 
@@ -117,22 +157,24 @@
 
   function buildStage(){
     bricks=[];
-    const bw = (c.width - conf.side*2 - (conf.cols-1)*conf.pad) / conf.cols;
+    const bw = (canvas.width - conf.side*2 - (conf.cols-1)*conf.pad) / conf.cols;
+    const bwCss = bw; // setTransform으로 이미 CSS px과 동일
     for(let r=0;r<conf.rows;r++){
       for(let i=0;i<conf.cols;i++){
-        bricks.push({x:conf.side+i*(bw+conf.pad), y:conf.top+r*(conf.h+conf.pad), w:bw, h:conf.h, color:colors[r%colors.length]});
+        bricks.push({x:conf.side+i*(bwCss+conf.pad),
+                     y:conf.top+r*(conf.h+conf.pad),
+                     w:bwCss,h:conf.h,color:colors[r%colors.length]});
       }
     }
   }
 
   function resetGame(){
-    fitCanvas();
     score=0;stage=1;lives=3;
-    scoreEl.textContent=score;stageEl.textContent=stage;livesEl.textContent=lives;
-    paddle.x=c.width/2 - paddle.w/2; paddle.y=c.height - 30;   // ✅ 패들이 항상 캔버스 안쪽에 위치
-    ball.x=c.width/2; ball.y=c.height - 60; ball.vx=4; ball.vy=-4;
+    scoreEl.textContent=score; stageEl.textContent=stage; livesEl.textContent=lives;
+    fitCanvas();
+    ball.vx=4; ball.vy=-4;
     buildStage();
-    running=false;over=false;
+    running=false; over=false;
     msgEl.textContent="탭(또는 Space)으로 시작!"; msgEl.classList.remove('hidden');
   }
 
@@ -146,7 +188,7 @@
   document.getElementById('startBtn').onclick=toggleRun;
   document.getElementById('resetBtn').onclick=resetGame;
 
-  // 키보드
+  // 입력 (키보드)
   let left=false,right=false;
   document.addEventListener('keydown',e=>{
     if(e.code==="Space"){ e.preventDefault(); toggleRun(); }
@@ -158,18 +200,18 @@
     if(e.key==="ArrowRight"||e.key==="d"||e.key==="D") right=false;
   });
 
-  // 캔버스 탭으로 시작/일시정지 + 드래그 이동
+  // 캔버스 탭/드래그 이동
+  let dragging=false;
   wrap.addEventListener('pointerdown', (e)=>{ toggleRun(); dragging=true; movePaddle(e); });
   wrap.addEventListener('pointermove', (e)=>{ if(dragging) movePaddle(e); });
   wrap.addEventListener('pointerup', ()=> dragging=false);
-  let dragging=false;
   function movePaddle(e){
-    const rect = c.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left);
-    paddle.x = Math.max(0, Math.min(c.width - paddle.w, x - paddle.w/2));
+    paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, x - paddle.w/2));
   }
 
-  // 아래 큰 터치버튼(캔버스 밖이라 겹침 없음)
+  // 큰 터치 버튼 (캔버스 아래, 겹침 없음)
   function bindHold(btn, dir){
     let hold=false, rafId=null;
     const step=()=>{ if(!hold) return; paddle.x += dir*paddle.speed*1.2; clampPaddle(); rafId=requestAnimationFrame(step); };
@@ -182,7 +224,7 @@
   bindHold(leftBtn, -1);
   bindHold(rightBtn, 1);
 
-  function clampPaddle(){ paddle.x = Math.max(0, Math.min(c.width - paddle.w, paddle.x)); }
+  function clampPaddle(){ paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x)); }
 
   function update(){
     if(left) paddle.x -= paddle.speed;
@@ -191,8 +233,9 @@
 
     ball.x+=ball.vx; ball.y+=ball.vy;
 
+    // 벽 반사
     if(ball.x<ball.r){ ball.x=ball.r; ball.vx*=-1; }
-    if(ball.x>c.width-ball.r){ ball.x=c.width-ball.r; ball.vx*=-1; }
+    if(ball.x>canvas.width-ball.r){ ball.x=canvas.width-ball.r; ball.vx*=-1; }
     if(ball.y<ball.r){ ball.y=ball.r; ball.vy*=-1; }
 
     // 패들
@@ -215,13 +258,13 @@
     }
 
     // 바닥
-    if(ball.y>c.height){
+    if(ball.y>canvas.height){
       lives--; livesEl.textContent=lives;
       if(lives<=0){
         over=true; running=false; msgEl.textContent="게임 오버! Space/탭으로 재시작"; msgEl.classList.remove('hidden');
       }else{
-        ball.x=c.width/2; ball.y=c.height-60; ball.vx=4; ball.vy=-4;
-        paddle.x=c.width/2 - paddle.w/2;
+        ball.x=canvas.width/2; ball.y=canvas.height-60; ball.vx=4; ball.vy=-4;
+        paddle.x=canvas.width/2 - paddle.w/2;
         running=false; msgEl.textContent="재도전! Space/탭으로 시작"; msgEl.classList.remove('hidden');
       }
     }
@@ -230,13 +273,13 @@
     if(bricks.length===0){
       stage++; stageEl.textContent=stage;
       conf.rows++; buildStage();
-      ball.x=c.width/2; ball.y=c.height-60;
+      ball.x=canvas.width/2; ball.y=canvas.height-60;
       running=false; msgEl.textContent=`스테이지 ${stage-1} 클리어! Space/탭으로 계속`; msgEl.classList.remove('hidden');
     }
   }
 
   function draw(){
-    ctx.clearRect(0,0,c.width,c.height);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
     bricks.forEach(b=>{ ctx.fillStyle=b.color; ctx.fillRect(b.x,b.y,b.w,b.h); });
     ctx.fillStyle='var(--paddle)'; ctx.fillRect(paddle.x,paddle.y,paddle.w,paddle.h);
     ctx.beginPath(); ctx.fillStyle='var(--accent)'; ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
