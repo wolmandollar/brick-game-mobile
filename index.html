@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>브릭 브레이커 파스텔 (모바일)</title>
+<style>
+  :root{
+    --bg:#f5f5fa; --fg:#444; --accent:#ffa7c4;
+    --brick1:#ffd6a5; --brick2:#caffbf; --brick3:#9bf6ff; --brick4:#a0c4ff; --brick5:#bdb2ff; --paddle:#ffadad;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans KR',sans-serif;
+    display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;
+  }
+  header{width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .hud{display:flex;gap:8px;font-weight:700;flex-wrap:wrap}
+  .chip{background:#fff;padding:6px 12px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+  .panel{width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn{padding:8px 14px;border-radius:20px;border:none;cursor:pointer;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);font-weight:800}
+  .note{font-size:13px;opacity:.85}
+  .wrap{
+    width:100%;max-width:900px;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#fff;
+    box-shadow:0 6px 12px rgba(0,0,0,.1);position:relative;touch-action:none; /* 모바일 스크롤 방지 */
+  }
+  canvas{width:100%;height:100%;display:block;background:transparent}
+  .center-msg{
+    position:absolute;inset:0;display:grid;place-items:center;font-weight:800;color:var(--fg);text-align:center;
+    font-size:18px;background:rgba(255,255,255,.6);padding:12px
+  }
+  .hidden{display:none}
+
+  /* ↓ 모바일 전용 좌/우 큰 터치버튼 */
+  .touch-controls{
+    position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:8px;
+    justify-content:space-between;pointer-events:none; /* 내부 버튼만 터치 */
+  }
+  .touch-btn{
+    pointer-events:auto;flex:1;min-height:56px;border:none;border-radius:12px;
+    background:rgba(0,0,0,.08);font-size:18px;font-weight:900;color:#333;
+    backdrop-filter:blur(4px)
+  }
+  @media (max-width:520px){
+    .chip{padding:6px 10px}
+    header h2{font-size:18px;margin:0}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h2>🧱 브릭 브레이커 파스텔</h2>
+    <div class="hud">
+      <div class="chip">점수 <span id="score">0</span></div>
+      <div class="chip">스테이지 <span id="stage">1</span></div>
+      <div class="chip">목숨 <span id="lives">3</span></div>
+    </div>
+  </header>
+
+  <section class="panel">
+    <span class="note">← → / A D, Space·탭으로 시작·일시정지 · 화면 드래그/버튼으로 이동</span>
+    <div>
+      <button id="startBtn" class="btn">▶ 시작/일시정지</button>
+      <button id="resetBtn" class="btn">⟳ 리셋</button>
+    </div>
+  </section>
+
+  <div class="wrap" id="wrap">
+    <canvas id="game" width="900" height="506"></canvas>
+    <div id="msg" class="center-msg">탭(또는 Space)으로 시작!<br/>화면을 드래그하거나 아래 버튼으로 이동하세요.</div>
+
+    <!-- 모바일 큰 터치버튼 -->
+    <div class="touch-controls">
+      <button class="touch-btn" id="leftBtn">◀ 왼쪽</button>
+      <button class="touch-btn" id="rightBtn">오른쪽 ▶</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const c = document.getElementById('game');
+  const ctx = c.getContext('2d');
+  const wrap = document.getElementById('wrap');
+  const msgEl = document.getElementById('msg');
+  const scoreEl = document.getElementById('score');
+  const stageEl = document.getElementById('stage');
+  const livesEl = document.getElementById('lives');
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+
+  // DPR 스케일링(선명도)
+  function fitCanvas(){
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const rect = c.getBoundingClientRect();
+    c.width = Math.round(rect.width * dpr);
+    c.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0); // 논리 좌표를 CSS 픽셀과 동일하게
+  }
+  new ResizeObserver(fitCanvas).observe(wrap);
+  window.addEventListener('orientationchange', ()=>setTimeout(fitCanvas, 100));
+
+  let running=false, over=false;
+  let score=0, stage=1, lives=3;
+
+  const paddle = {w:110,h:14,x:0,y:0,speed:8};
+  const ball = {x:0,y:0,r:8,vx:4,vy:-4};
+  const conf = {rows:5,cols:10,h:20,pad:8,top:60,side:30};
+  let bricks=[];
+
+  const colors=['var(--brick1)','var(--brick2)','var(--brick3)','var(--brick4)','var(--brick5)'];
+
+  function buildStage(){
+    bricks=[];
+    const bw = (c.width - conf.side*2 - (conf.cols-1)*conf.pad) / conf.cols;
+    for(let r=0;r<conf.rows;r++){
+      for(let i=0;i<conf.cols;i++){
+        bricks.push({x:conf.side+i*(bw+conf.pad), y:conf.top+r*(conf.h+conf.pad), w:bw, h:conf.h, color:colors[r%colors.length]});
+      }
+    }
+  }
+
+  function resetGame(){
+    fitCanvas();
+    score=0;stage=1;lives=3;
+    scoreEl.textContent=score;stageEl.textContent=stage;livesEl.textContent=lives;
+    paddle.x=c.width/2 - paddle.w/2; paddle.y=c.height - 30;
+    ball.x=c.width/2; ball.y=c.height - 60; ball.vx=4; ball.vy=-4;
+    buildStage();
+    running=false;over=false;
+    msgEl.textContent="탭(또는 Space)으로 시작!"; msgEl.classList.remove('hidden');
+  }
+
+  function toggleRun(){
+    if(over){ resetGame(); return; }
+    running=!running;
+    msgEl.classList.toggle('hidden', running);
+    if(!running && !over) msgEl.textContent="일시정지 (탭/Space로 재시작)";
+  }
+
+  document.getElementById('startBtn').onclick=toggleRun;
+  document.getElementById('resetBtn').onclick=resetGame;
+
+  // 키보드
+  let left=false,right=false;
+  document.addEventListener('keydown',e=>{
+    if(e.code==="Space"){ e.preventDefault(); toggleRun(); }
+    if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") left=true;
+    if(e.key==="ArrowRight"||e.key==="d"||e.key==="D") right=true;
+  });
+  document.addEventListener('keyup',e=>{
+    if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") left=false;
+    if(e.key==="ArrowRight"||e.key==="d"||e.key==="D") right=false;
+  });
+
+  // 화면 탭으로 시작/일시정지
+  wrap.addEventListener('pointerdown', (e)=>{
+    // 하단 버튼 영역은 버튼 자체가 처리하므로 여기선 시작/일시정지 토글만
+    if(e.target === leftBtn || e.target === rightBtn) return;
+    toggleRun();
+  });
+
+  // 드래그로 패들 이동
+  let dragging=false;
+  wrap.addEventListener('pointerdown', (e)=>{ dragging=true; movePaddle(e); });
+  wrap.addEventListener('pointermove', (e)=>{ if(dragging) movePaddle(e); });
+  wrap.addEventListener('pointerup', ()=> dragging=false);
+  function movePaddle(e){
+    const rect = c.getBoundingClientRect();
+    const x = (e.clientX - rect.left);
+    paddle.x = Math.max(0, Math.min(c.width - paddle.w, x - paddle.w/2));
+  }
+
+  // 큰 터치버튼으로 이동(길게 누르면 계속 이동)
+  function bindHold(btn, dir){
+    let hold=false, rafId=null;
+    const step=()=>{ if(!hold) return; paddle.x += dir*paddle.speed*1.2; clampPaddle(); rafId=requestAnimationFrame(step); };
+    const onDown=()=>{ hold=true; step(); };
+    const onUp=()=>{ hold=false; if(rafId) cancelAnimationFrame(rafId); };
+    btn.addEventListener('pointerdown', onDown);
+    btn.addEventListener('pointerup', onUp);
+    btn.addEventListener('pointerleave', onUp);
+  }
+  bindHold(leftBtn, -1);
+  bindHold(rightBtn, 1);
+
+  function clampPaddle(){ paddle.x = Math.max(0, Math.min(c.width - paddle.w, paddle.x)); }
+
+  function update(){
+    if(left) paddle.x -= paddle.speed;
+    if(right) paddle.x += paddle.speed;
+    clampPaddle();
+
+    ball.x+=ball.vx; ball.y+=ball.vy;
+
+    // 벽 반사
+    if(ball.x<ball.r){ ball.x=ball.r; ball.vx*=-1; }
+    if(ball.x>c.width-ball.r){ ball.x=c.width-ball.r; ball.vx*=-1; }
+    if(ball.y<ball.r){ ball.y=ball.r; ball.vy*=-1; }
+
+    // 패들
+    if(ball.y+ball.r>=paddle.y && ball.x>paddle.x && ball.x<paddle.x+paddle.w){
+      ball.vy*=-1;
+      const hit = (ball.x-(paddle.x+paddle.w/2))/(paddle.w/2);
+      ball.vx = 5*hit;
+      ball.y = paddle.y - ball.r;
+    }
+
+    // 벽돌
+    for(let i=0;i<bricks.length;i++){
+      const b=bricks[i];
+      if(ball.x> b.x && ball.x<b.x+b.w && ball.y-ball.r<b.y+b.h && ball.y+ball.r> b.y){
+        ball.vy*=-1;
+        bricks.splice(i,1);
+        score+=10; scoreEl.textContent=score;
+        break;
+      }
+    }
+
+    // 바닥
+    if(ball.y>c.height){
+      lives--; livesEl.textContent=lives;
+      if(lives<=0){
+        over=true; running=false; msgEl.textContent="게임 오버! Space/탭으로 재시작"; msgEl.classList.remove('hidden');
+      }else{
+        ball.x=c.width/2; ball.y=c.height-60; ball.vx=4; ball.vy=-4;
+        paddle.x=c.width/2 - paddle.w/2;
+        running=false; msgEl.textContent="재도전! Space/탭으로 시작"; msgEl.classList.remove('hidden');
+      }
+    }
+
+    // 클리어
+    if(bricks.length===0){
+      stage++; stageEl.textContent=stage;
+      conf.rows++; buildStage();
+      ball.x=c.width/2; ball.y=c.height-60;
+      running=false; msgEl.textContent=`스테이지 ${stage-1} 클리어! Space/탭으로 계속`; msgEl.classList.remove('hidden');
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    // 벽돌
+    bricks.forEach(b=>{ ctx.fillStyle=b.color; ctx.fillRect(b.x,b.y,b.w,b.h); });
+    // 패들
+    ctx.fillStyle='var(--paddle)'; ctx.fillRect(paddle.x,paddle.y,paddle.w,paddle.h);
+    // 공
+    ctx.beginPath(); ctx.fillStyle='var(--accent)'; ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
+  }
+
+  function loop(){ if(running) update(); draw(); requestAnimationFrame(loop); }
+
+  resetGame();
+  loop();
+})();
+</script>
+</body>
+</html>
