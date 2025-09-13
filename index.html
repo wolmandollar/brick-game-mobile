@@ -14,10 +14,10 @@
     --fg:#3a332e;         /* 글자 */
     --accent:#ff9e3d;     /* 공 색 */
     --paddle:#e7671a;     /* 패들 색 */
-    --brick1:#fde1d9;
-    --brick2:#f7b9a6;
-    --brick3:#ec8f6a;
-    --brick4:#d86c45;
+    --brick1:#b74c2c;
+    --brick2:#b74c2c;
+    --brick3:#b74c2c;
+    --brick4:#b74c2c;
     --brick5:#b74c2c;
     --panel:#ffffff;
   }
@@ -101,65 +101,58 @@
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
 
-  // 🎨 CSS 변수 실제 색상으로 읽기 (Canvas는 var() 직접 사용 불가)
+  // 🎨 CSS 변수 → 실제 색상
   function theme(){
     const css = getComputedStyle(document.documentElement);
     const get = k => css.getPropertyValue(k).trim();
     return {
       brick:[get('--brick1'),get('--brick2'),get('--brick3'),get('--brick4'),get('--brick5')],
-      paddle:get('--paddle'),
-      ball:get('--accent')
+      paddle:get('--paddle'), ball:get('--accent')
     };
   }
   let COLORS = theme();
 
-  // 📐 모든 기기에서 16:9 비율 유지 + DPR(선명도) 반영
-  let prevW = 0, prevH = 0;
+  // 논리 좌표(=CSS 픽셀) 폭/높이
+  let viewW = 0, viewH = 0, DPR = 1;
+
+  // 📐 16:9 자동 맞춤 (모든 기기)
   function fitCanvas(){
-    const dpr = window.devicePixelRatio || 1;
+    DPR = window.devicePixelRatio || 1;
 
     const vw = document.documentElement.clientWidth;
     const vh = window.innerHeight;
 
-    // 상단 헤더/패널/아래 버튼 높이를 제외한 가용 높이 계산
     const headerH = document.querySelector('header').getBoundingClientRect().height;
     const panelH  = document.querySelector('.panel').getBoundingClientRect().height;
-    const tcEl = document.querySelector('.touch-controls');
-    const touchH = (tcEl && getComputedStyle(tcEl).display!=='none') ? tcEl.getBoundingClientRect().height : 0;
-    const margin = 32; // 여유
-    const availH = Math.max(200, vh - headerH - panelH - touchH - margin);
+    const tcEl    = document.querySelector('.touch-controls');
+    const touchH  = (tcEl && getComputedStyle(tcEl).display!=='none') ? tcEl.getBoundingClientRect().height : 0;
 
-    // 16:9 박스 계산 (가용 폭, 높이 내 최대)
-    const maxW = Math.min(1100, vw - 16*2);
+    const margin  = 32;
+    const availH  = Math.max(220, vh - headerH - panelH - touchH - margin);
+    const maxW    = Math.min(1100, vw - 16*2);
+
     let w = maxW;
     let h = Math.round(w * 9/16);
     if (h > availH) { h = availH; w = Math.round(h * 16/9); }
 
-    // wrap & canvas 크기 반영
-    wrap.style.width  = w + 'px';
-    wrap.style.height = h + 'px';
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-    canvas.width  = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
+    // DOM 크기
+    wrap.style.width = w + 'px'; wrap.style.height = h + 'px';
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
 
-    // 크기 변경 시 좌표들 비율 유지
-    if(prevW && prevH){
-      const sx = (canvas.width/dpr)  / prevW;
-      const sy = (canvas.height/dpr) / prevH;
-      paddle.x *= sx; paddle.y *= sy;
-      ball.x   *= sx; ball.y   *= sy;
-      bricks.forEach(b=>{ b.x*=sx; b.y*=sy; b.w*=sx; /* b.h는 동일 비율 */ });
-    }else{
-      // 초기 위치
-      paddle.x = (canvas.width/dpr)/2 - paddle.w/2;
-      paddle.y = (canvas.height/dpr) - 30;
-      ball.x   = (canvas.width/dpr)/2;
-      ball.y   = (canvas.height/dpr) - 60;
+    // 실제 캔버스 버퍼(장치 픽셀)
+    canvas.width  = Math.round(w * DPR);
+    canvas.height = Math.round(h * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+
+    viewW = w; viewH = h;
+
+    // 정지 중엔 중앙으로 재배치
+    if(!running){
+      paddle.x = viewW/2 - paddle.w/2;
+      paddle.y = viewH - paddle.marginBottom - paddle.h; // 아래 여백 반영
+      ball.x   = viewW/2;
+      ball.y   = paddle.y - 30;
     }
-    prevW = (canvas.width/dpr);
-    prevH = (canvas.height/dpr);
   }
   window.addEventListener('resize', fitCanvas, {passive:true});
   window.addEventListener('orientationchange', ()=> setTimeout(fitCanvas, 200));
@@ -168,10 +161,52 @@
   let running=false, over=false;
   let score=0, stage=1, lives=3;
 
-  const paddle = {w:110,h:14,x:0,y:0,speed:8};
-  const ball = {x:0,y:0,r:8,vx:4,vy:-4};
-  const conf = {rows:5,cols:10,h:20,pad:8,top:60,side:30};
+  const paddle = {w:110,h:14,x:0,y:0,speed:8, marginBottom:14}; // 바닥에서 14px 띄움
+  const ball   = {x:0,y:0,r:8,vx:4,vy:-4};
+
+  // 배치 설정 (벽돌과 패들의 간격 넉넉히)
+  const conf   = {
+    rows:5, cols:10,
+    brickH:20, pad:8,
+    side:24,
+    top:50,            // 화면 위에서 시작
+    gapToPaddle:100    // 벽돌 하단과 패들 사이 최소 간격
+  };
   let bricks=[];
+
+  function buildStage(){
+    bricks=[];
+    // 논리 좌표(viewW)로 계산
+    const areaW = viewW - conf.side*2 - (conf.cols-1)*conf.pad;
+    const bw = areaW / conf.cols;
+
+    // 벽돌 전체 높이
+    const bricksHeight = conf.rows*conf.brickH + (conf.rows-1)*conf.pad;
+
+    // 패들과 거리 확보: top을 자동 조정
+    let top = conf.top;
+    const minPaddleY = top + bricksHeight + conf.gapToPaddle;
+    const desiredPaddleY = viewH - paddle.marginBottom - paddle.h;
+    if (desiredPaddleY < minPaddleY) {
+      // 화면이 매우 낮다면, top을 더 위로 올려서 간격 확보
+      top = Math.max(20, top - (minPaddleY - desiredPaddleY));
+    }
+
+    for(let r=0;r<conf.rows;r++){
+      for(let c=0;c<conf.cols;c++){
+        bricks.push({
+          x: conf.side + c*(bw+conf.pad),
+          y: top + r*(conf.brickH+conf.pad),
+          w: bw, h: conf.brickH,
+          color: COLORS.brick[r % COLORS.brick.length]
+        });
+      }
+    }
+
+    // 패들 위치 최종 확정(논리 좌표)
+    paddle.y = viewH - paddle.marginBottom - paddle.h;
+    if(!running) { ball.y = paddle.y - 30; }
+  }
 
   function roundedRect(x,y,w,h,r=4){
     ctx.beginPath();
@@ -183,23 +218,8 @@
     ctx.closePath();
   }
 
-  function buildStage(){
-    bricks=[];
-    const bw = (canvas.width - conf.side*2 - (conf.cols-1)*conf.pad) / conf.cols;
-    for(let r=0;r<conf.rows;r++){
-      for(let i=0;i<conf.cols;i++){
-        bricks.push({
-          x: conf.side + i*(bw+conf.pad),
-          y: conf.top  + r*(conf.h+conf.pad),
-          w: bw, h: conf.h,
-          color: COLORS.brick[r % COLORS.brick.length]
-        });
-      }
-    }
-  }
-
   function resetGame(){
-    COLORS = theme();       // 테마 다시 읽기
+    COLORS = theme();
     score=0; stage=1; lives=3;
     scoreEl.textContent=score; stageEl.textContent=stage; livesEl.textContent=lives;
     fitCanvas();
@@ -238,11 +258,11 @@
   wrap.addEventListener('pointerup',   ()=>{ dragging=false; });
   function movePaddle(e){
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left);
-    paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, x - paddle.w/2));
+    const x = (e.clientX - rect.left); // 논리(px)
+    paddle.x = Math.max(0, Math.min(viewW - paddle.w, x - paddle.w/2));
   }
 
-  // ⬅️➡️ 큰 터치 버튼 (길게 누르면 계속 이동)
+  // ⬅️➡️ 큰 터치 버튼
   function bindHold(btn, dir){
     let hold=false, raf=null;
     const step=()=>{ if(!hold) return; paddle.x += dir*paddle.speed*1.2; clampPaddle(); raf=requestAnimationFrame(step); };
@@ -254,9 +274,9 @@
   bindHold(leftBtn, -1);
   bindHold(rightBtn, 1);
 
-  function clampPaddle(){ paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x)); }
+  function clampPaddle(){ paddle.x = Math.max(0, Math.min(viewW - paddle.w, paddle.x)); }
 
-  // 🔁 게임 루프
+  // 🔁 게임 루프 (모든 경계에 viewW/viewH 사용)
   function update(){
     if(left) paddle.x -= paddle.speed;
     if(right) paddle.x += paddle.speed;
@@ -266,7 +286,7 @@
 
     // 벽 충돌
     if(ball.x < ball.r){ ball.x = ball.r; ball.vx *= -1; }
-    if(ball.x > canvas.width - ball.r){ ball.x = canvas.width - ball.r; ball.vx *= -1; }
+    if(ball.x > viewW - ball.r){ ball.x = viewW - ball.r; ball.vx *= -1; }
     if(ball.y < ball.r){ ball.y = ball.r; ball.vy *= -1; }
 
     // 패들
@@ -289,23 +309,23 @@
     }
 
     // 바닥
-    if(ball.y > canvas.height){
+    if(ball.y > viewH){
       lives--; livesEl.textContent = lives;
       if(lives<=0){
         over=true; running=false; msgEl.textContent="게임 오버! Space/탭으로 재시작"; msgEl.classList.remove('hidden');
       }else{
-        ball.x = canvas.width/2; ball.y = canvas.height-60; ball.vx=4; ball.vy=-4;
-        paddle.x = canvas.width/2 - paddle.w/2;
+        ball.x = viewW/2; ball.y = paddle.y - 30; ball.vx=4; ball.vy=-4;
+        paddle.x = viewW/2 - paddle.w/2;
         running=false; msgEl.textContent="재도전! Space/탭으로 시작"; msgEl.classList.remove('hidden');
       }
     }
 
-    // 클리어
+    // 클리어 → 간격 유지한 채 다음 스테이지
     if(bricks.length === 0){
       stage++; stageEl.textContent = stage;
-      conf.rows++;
+      conf.rows = Math.min(7, conf.rows + 1); // 너무 빽빽해지지 않게 상한
       buildStage();
-      ball.x = canvas.width/2; ball.y = canvas.height-60;
+      ball.x = viewW/2; ball.y = paddle.y - 30;
       running=false; msgEl.textContent=`스테이지 ${stage-1} 클리어! Space/탭으로 계속`; msgEl.classList.remove('hidden');
     }
   }
@@ -313,7 +333,7 @@
   function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // 벽돌(라운드·테두리)
+    // 벽돌(라운드)
     bricks.forEach(b=>{
       ctx.fillStyle = b.color;
       roundedRect(b.x, b.y, b.w, b.h, 4);
